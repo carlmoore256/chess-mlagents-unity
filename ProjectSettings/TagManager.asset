@@ -1,0 +1,65 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!78 &1
+TagManager:
+  serializedVersion: 2
+  tags:
+  - pawn
+  - bishop
+  - rook
+  - king
+  - queen
+  - knight
+  - target
+  - blackSquare
+  - whiteSquare
+  - boundary
+  - whitePawn
+  - whiteBishop
+  - whiteRook
+  - whiteKing
+  - whiteQueen
+  - blackPawn
+  - blackBishop
+  - blackRook
+  - blackKnight
+  - blackKing
+  - blackQueen
+  - whiteKnight
+  layers:
+  - Default
+  - TransparentFX
+  - Ignore Raycast
+  - 
+  - Water
+  - UI
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  m_SortingLayers:
+  - name: Default
+    uniqueID: 0
+    locked: 0
