@@ -1,21 +1,24 @@
 using System;
+using System.Collections.Generic;
 using Unity.MLAgents.Actuators;
 using UnityEngine;
 
-[System.Serializable]
-public enum PieceType
+public class MovePieceEvent
 {
-    Pawn = 0,
-    Rook = 1,
-    Knight = 2,
-    Bishop = 3,
-    Queen = 4,
-    King = 5
-} 
+    public ChessPiece Piece;
+    public Move Move;
+
+    public MovePieceEvent(ChessPiece piece, Move move)
+    {
+        Piece = piece;
+        Move = move;
+    }
+}
 
 [RequireComponent(typeof(MeshCollider))]
 public class ChessPiece : MonoBehaviour
 {
+    public string Id;
     public PieceType pieceType;
     public Team team;
     public ChessSquare CurrentSquare { get; private set; }
@@ -24,7 +27,8 @@ public class ChessPiece : MonoBehaviour
     public bool IsCaptured { get; set; }
     public bool IsControlling
     {
-        get => _isControlling; set
+        get => _isControlling;
+        set
         {
             if (povCamera != null)
             {
@@ -34,6 +38,10 @@ public class ChessPiece : MonoBehaviour
         }
     }
 
+    public int Value => PieceValue(pieceType);
+    public List<Move> Moves { get; private set; }
+    public ChessRules Rules { get; private set; } // meh whatever
+
     public ChessPieces chessPieces;
     public Vector3 pieceOffset = new Vector3(0, 0.1f, 0);
 
@@ -42,6 +50,9 @@ public class ChessPiece : MonoBehaviour
     private Transform _pieceModel;
     public Camera povCamera;
     public Action<ChessPiece> OnInitialized;
+    public Action<ChessPiece> OnCaptured;
+
+    private ChessSquare _initialSquare;
 
     private void OnEnable()
     {
@@ -56,13 +67,22 @@ public class ChessPiece : MonoBehaviour
         povCamera.gameObject.SetActive(IsControlling);
     }
 
-    public void Initialize(PieceType pieceType, Team team, ChessSquare square = null)
+    public void Initialize(
+        PieceType pieceType,
+        Team team,
+        ChessRules rules = null,
+        ChessSquare square = null,
+        string id = null
+    )
     {
         this.pieceType = pieceType;
         this.team = team;
         IsPromoted = false;
         IsCaptured = false;
         HasMoved = false;
+        Debug.Log("Setting rules to " + rules);
+        Rules = rules;
+        Id = id ?? Guid.NewGuid().ToString();
 
         // spawn the piece model
         if (_pieceModel != null)
@@ -78,7 +98,9 @@ public class ChessPiece : MonoBehaviour
 
         _pieceModel = chessPieces.SpawnPieceModel(pieceType, team, transform).transform;
 
-        GetComponent<MeshCollider>().sharedMesh = _pieceModel.GetComponentInChildren<MeshFilter>().sharedMesh;
+        GetComponent<MeshCollider>().sharedMesh = _pieceModel
+            .GetComponentInChildren<MeshFilter>()
+            .sharedMesh;
         if (team == Team.Black)
         {
             // we have to double rotate (because its already rotated)
@@ -87,12 +109,33 @@ public class ChessPiece : MonoBehaviour
             transform.rotation = Quaternion.Euler(0f, 180f, 0f);
         }
 
+        _initialSquare = square;
+
         if (square != null)
         {
             MoveToSquare(square, 0f);
         }
 
         OnInitialized?.Invoke(this);
+    }
+
+    public void ResetToStartingPosition()
+    {
+        if (_initialSquare == null)
+        {
+            Debug.LogError("No initial square set!");
+            return;
+        }
+        MoveToSquare(_initialSquare, 0f);
+    }
+
+    public void MakeMove(Move move, float duration = 0.5f)
+    {
+        MoveToSquare(move.ToSquare, duration);
+        if (move.IsCapture)
+        {
+            move.CapturedPiece.Capture();
+        }
     }
 
     public void MoveToSquare(ChessSquare square, float duration = 0.5f)
@@ -105,13 +148,35 @@ public class ChessPiece : MonoBehaviour
         }
         if (_moveCoroutine != null)
             StopCoroutine(_moveCoroutine);
-        _moveCoroutine = this.LerpAction((t) =>
-        {
-            transform.position = Vector3.Lerp(transform.position, square.transform.position + pieceOffset, t);
-        },
-        duration,
-        () => transform.position = square.transform.position + pieceOffset);
+        _moveCoroutine = this.LerpAction(
+            (t) =>
+            {
+                transform.position = Vector3.Lerp(
+                    transform.position,
+                    square.transform.position + pieceOffset,
+                    t
+                );
+            },
+            duration,
+            () => transform.position = square.transform.position + pieceOffset
+        );
         HasMoved = true;
+    }
+
+    public List<Move> GetValidMoves()
+    {
+        if (Rules == null)
+        {
+            Debug.LogError("Rules not set!");
+            return new List<Move>();
+        }
+        return Rules.GetMovesForPiece(this);
+    }
+
+    public void Capture()
+    {
+        IsCaptured = true;
+        OnCaptured?.Invoke(this);
     }
 
     public static int PieceValue(PieceType pieceType)
@@ -121,6 +186,7 @@ public class ChessPiece : MonoBehaviour
             case PieceType.Pawn:
                 return 1;
             case PieceType.Knight:
+                return 3;
             case PieceType.Bishop:
                 return 3;
             case PieceType.Rook:

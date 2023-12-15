@@ -1,31 +1,36 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Unity.MLAgents;
 using UnityEngine;
 using UnityEngine.Events;
 
+[RequireComponent(typeof(ChessGame))]
 public class ChessEnvController : MonoBehaviour
 {
     [System.Serializable]
     public class PlayerInfo
     {
         public ChessAgent Agent;
+
         [HideInInspector]
         public Vector3 StartingPos;
+
         [HideInInspector]
         public Quaternion StartingRot;
+
         [HideInInspector]
         public Rigidbody Rb;
     }
 
     public UnityEvent<Team> OnTargetTouched;
 
-
     /// <summary>
     /// Max Academy steps before this platform resets
     /// </summary>
     /// <returns></returns>
-    [Tooltip("Max Environment Steps")] public int MaxEnvironmentSteps = 25000;
+    [Tooltip("Max Environment Steps")]
+    public int MaxEnvironmentSteps = 25000;
 
     /// <summary>
     /// The area bounds.
@@ -37,34 +42,139 @@ public class ChessEnvController : MonoBehaviour
 
 
     //List of Agents On Platform
-    public List<ChessAgent> AgentsList = new List<ChessAgent>();
+    // public List<ChessAgent> AgentsList;
 
-    private ChessSettings m_ChessSettings;
+    private ChessSettings _chessSettings;
 
+    private SimpleMultiAgentGroup _whiteAgents;
+    private SimpleMultiAgentGroup _blackAgents;
 
-    private SimpleMultiAgentGroup m_WhiteAgentGroup;
-    private SimpleMultiAgentGroup m_BlackAgentGroup;
+    private ChessGame _game;
+
+    private int _agentIndex = 0;
 
     private int m_ResetTimer;
 
+    public float DecisionDelay = 0.1f;
+
     void Start()
     {
-        m_ChessSettings = FindObjectOfType<ChessSettings>();
-        m_WhiteAgentGroup = new SimpleMultiAgentGroup();
-        m_BlackAgentGroup = new SimpleMultiAgentGroup();
-        AgentsList.AddRange(FindObjectsOfType<ChessAgent>());
-        foreach (var item in AgentsList)
+        _game = GetComponent<ChessGame>();
+        _chessSettings = FindObjectOfType<ChessSettings>();
+        _whiteAgents = new SimpleMultiAgentGroup();
+        _blackAgents = new SimpleMultiAgentGroup();
+
+        _game
+            .WhiteTeam
+            .Pieces
+            .ForEach(
+                (piece) =>
+                {
+                    var agent = piece.GetComponent<ChessAgent>();
+                    if (agent != null)
+                    {
+                        _whiteAgents.RegisterAgent(agent);
+                    }
+                }
+            );
+
+        // ResetScene();
+    }
+
+    private void RegisterTeam(Team team)
+    {
+        _game
+            .Teams[team]
+            .Pieces
+            .ForEach(
+                (piece) =>
+                {
+                    RegisterChessPiece(piece);
+                }
+            );
+    }
+
+    public void RegisterChessPiece(ChessPiece piece)
+    {
+        var agent = piece.GetComponent<ChessAgent>();
+        if (agent != null)
         {
-            if (item.Team == Team.White)
+            if (piece.team == Team.White)
             {
-                m_WhiteAgentGroup.RegisterAgent(item);
+                _whiteAgents.RegisterAgent(agent);
             }
             else
             {
-                m_BlackAgentGroup.RegisterAgent(item);
+                _blackAgents.RegisterAgent(agent);
             }
         }
-        // ResetScene();
+
+        piece.OnCaptured += (p) =>
+        {
+            var pieceValue = p.Value * _chessSettings.pieceValueMultiplier;
+            if (p.team == Team.White)
+            {
+                _whiteAgents.AddGroupReward(-pieceValue);
+            }
+            else
+            {
+                _blackAgents.AddGroupReward(-pieceValue);
+            }
+        };
+    }
+
+    public void NextTurn()
+    {
+        // var agents = AgentsList.FindAll(x => x.Piece.pieceType == PieceType.Pawn);
+        // AgentsList[_agentIndex].RequestDecision();
+        // if (agents.Count() == 0)
+        // {
+        //     return;
+        // }
+        // agents.ElementAt(_agentIndex).RequestDecision();
+        // _agentIndex++;
+        // if (_agentIndex >= agents.Count())
+        // {
+        //     _agentIndex = 0;
+        // }
+    }
+
+    private void Update()
+    {
+        if (Input.GetKey(KeyCode.Space))
+        {
+            NextTurn();
+        }
+
+        if (Input.GetKey(KeyCode.X))
+        {
+            EndEpisode();
+        }
+    }
+
+    private void OnEnable()
+    {
+        EventBus.Subscribe<MovePieceEvent>(OnMovePiece);
+    }
+
+    private void OnDisable()
+    {
+        EventBus.Unsubscribe<MovePieceEvent>(OnMovePiece);
+    }
+
+    private void OnMovePiece(MovePieceEvent e)
+    {
+        // if (e.Piece.IsCaptured)
+        // {
+        // if (e.Piece.team == Team.White)
+        // {
+        //     m_WhiteAgentGroup.AddGroupReward(-0.1f);
+        // }
+        // else
+        // {
+        //     m_BlackAgentGroup.AddGroupReward(-0.1f);
+        // }
+        // }
     }
 
     void FixedUpdate()
@@ -72,8 +182,8 @@ public class ChessEnvController : MonoBehaviour
         m_ResetTimer += 1;
         if (m_ResetTimer >= MaxEnvironmentSteps && MaxEnvironmentSteps > 0)
         {
-            m_WhiteAgentGroup.GroupEpisodeInterrupted();
-            m_BlackAgentGroup.GroupEpisodeInterrupted();
+            _whiteAgents.GroupEpisodeInterrupted();
+            _blackAgents.GroupEpisodeInterrupted();
             ResetScene();
         }
     }
@@ -82,29 +192,28 @@ public class ChessEnvController : MonoBehaviour
     {
         if (agent.Team == Team.White)
         {
-            m_WhiteAgentGroup.AddGroupReward(1 - (float)m_ResetTimer / MaxEnvironmentSteps);
-            m_BlackAgentGroup.AddGroupReward(-1);
+            _whiteAgents.AddGroupReward(1 - (float)m_ResetTimer / MaxEnvironmentSteps);
+            _blackAgents.AddGroupReward(-1);
         }
         else
         {
-            m_BlackAgentGroup.AddGroupReward(1 - (float)m_ResetTimer / MaxEnvironmentSteps);
-            m_WhiteAgentGroup.AddGroupReward(-1);
+            _blackAgents.AddGroupReward(1 - (float)m_ResetTimer / MaxEnvironmentSteps);
+            _whiteAgents.AddGroupReward(-1);
         }
-        m_BlackAgentGroup.EndGroupEpisode();
-        m_WhiteAgentGroup.EndGroupEpisode();
+        _blackAgents.EndGroupEpisode();
+        _whiteAgents.EndGroupEpisode();
         OnTargetTouched?.Invoke(agent.Team);
         ResetScene();
     }
 
     public void EndEpisode(float whiteReward = -1f, float blackReward = -1f)
     {
-        m_WhiteAgentGroup.AddGroupReward(whiteReward);
-        m_BlackAgentGroup.AddGroupReward(blackReward);
-        m_WhiteAgentGroup.EndGroupEpisode();
-        m_BlackAgentGroup.EndGroupEpisode();
+        _whiteAgents.AddGroupReward(whiteReward);
+        _blackAgents.AddGroupReward(blackReward);
+        _whiteAgents.EndGroupEpisode();
+        _blackAgents.EndGroupEpisode();
         ResetScene();
     }
-
 
     public void ResetScene()
     {
@@ -112,9 +221,9 @@ public class ChessEnvController : MonoBehaviour
         Debug.Log("Resetting Scene");
 
         // Reset Agents
-        foreach (var item in AgentsList)
-        {
-            item.Reset();
-        }
+        // foreach (var item in AgentsList)
+        // {
+        //     item.Reset();
+        // }
     }
 }

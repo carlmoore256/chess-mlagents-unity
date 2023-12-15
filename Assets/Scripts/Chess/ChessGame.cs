@@ -1,12 +1,7 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
-
-[System.Serializable]
-public enum Team
-{
-    White = 0,
-    Black = 1
-}
 
 [System.Serializable]
 public struct PiecePlacement
@@ -20,77 +15,108 @@ public struct PiecePlacement
 public class ChessGame : MonoBehaviour
 {
     public GameObject piecePrefab;
+    public GameObject teamPrefab;
     public GameObject piecesParent;
-    public List<ChessPiece> Pieces = new List<ChessPiece>();
+    public GameObject capturedZonePrefab;
+    public IEnumerable<ChessPiece> Pieces => Teams[Team.White].Pieces.Concat(Teams[Team.Black].Pieces);
+    public ChessTeam WhiteTeam => Teams[Team.White];
+    public ChessTeam BlackTeam => Teams[Team.Black];
 
     public ChessBoard Board;
     public PGNData PGNData;
 
-    public readonly List<PiecePlacement> StartingPieces = new List<PiecePlacement>() {
-        new() { PieceType = PieceType.Pawn, Team = Team.White, SquareId = "a2" },
-        new() { PieceType = PieceType.Pawn, Team = Team.White, SquareId = "b2" },
-        new() { PieceType = PieceType.Pawn, Team = Team.White, SquareId = "c2" },
-        new() { PieceType = PieceType.Pawn, Team = Team.White, SquareId = "d2" },
-        new() { PieceType = PieceType.Pawn, Team = Team.White, SquareId = "e2" },
-        new() { PieceType = PieceType.Pawn, Team = Team.White, SquareId = "f2" },
-        new() { PieceType = PieceType.Pawn, Team = Team.White, SquareId = "g2" },
-        new() { PieceType = PieceType.Pawn, Team = Team.White, SquareId = "h2" },
-        new() { PieceType = PieceType.Rook, Team = Team.White, SquareId = "a1" },
-        new() { PieceType = PieceType.Knight, Team = Team.White, SquareId = "b1" },
-        new() { PieceType = PieceType.Bishop, Team = Team.White, SquareId = "c1" },
-        new() { PieceType = PieceType.Queen, Team = Team.White, SquareId = "d1" },
-        new() { PieceType = PieceType.King, Team = Team.White, SquareId = "e1" },
-        new() { PieceType = PieceType.Bishop, Team = Team.White, SquareId = "f1" },
-        new() { PieceType = PieceType.Knight, Team = Team.White, SquareId = "g1" },
-        new() { PieceType = PieceType.Rook, Team = Team.White, SquareId = "h1" },
-        new() { PieceType = PieceType.Pawn, Team = Team.Black, SquareId = "a7" },
-        new() { PieceType = PieceType.Pawn, Team = Team.Black, SquareId = "b7" },
-        new() { PieceType = PieceType.Pawn, Team = Team.Black, SquareId = "c7" },
-        new() { PieceType = PieceType.Pawn, Team = Team.Black, SquareId = "d7" },
-        new() { PieceType = PieceType.Pawn, Team = Team.Black, SquareId = "e7" },
-        new() { PieceType = PieceType.Pawn, Team = Team.Black, SquareId = "f7" },
-        new() { PieceType = PieceType.Pawn, Team = Team.Black, SquareId = "g7" },
-        new() { PieceType = PieceType.Pawn, Team = Team.Black, SquareId = "h7" },
-        new() { PieceType = PieceType.Rook, Team = Team.Black, SquareId = "a8" },
-        new() { PieceType = PieceType.Knight, Team = Team.Black, SquareId = "b8" },
-        new() { PieceType = PieceType.Bishop, Team = Team.Black, SquareId = "c8" },
-        new() { PieceType = PieceType.Queen, Team = Team.Black, SquareId = "d8" },
-        new() { PieceType = PieceType.King, Team = Team.Black, SquareId = "e8" },
-        new() { PieceType = PieceType.Bishop, Team = Team.Black, SquareId = "f8" },
-        new() { PieceType = PieceType.Knight, Team = Team.Black, SquareId = "g8" },
-        new() { PieceType = PieceType.Rook, Team = Team.Black, SquareId = "h8" },
+    public Action<Move> OnMove;
+
+    public ChessRules Rules {
+        get {
+            if (_rules == null) _rules = new ChessRules(this);
+            return _rules;
+        }
+    }
+
+    private ChessRules _rules;
+
+    public Dictionary<Team, ChessTeam> Teams = new()
+    {
+        { Team.White, null },
+        { Team.Black, null }
     };
+
+    private void Awake()
+    {
+        LoadStartingGame();
+    }
+
+    private void OnEnable()
+    {
+        EventBus.Subscribe<MovePieceEvent>(OnMovePiece);
+    }
+
+    private void OnDisable()
+    {
+        EventBus.Unsubscribe<MovePieceEvent>(OnMovePiece);
+    }
+
+    public void CreateTeams()
+    {
+        ClearPieces();
+        var captureZones = piecesParent.GetComponentsInChildren<CaptureZone>();
+        foreach (var captureZone in captureZones)
+        {
+#if UNITY_EDITOR
+            DestroyImmediate(captureZone.gameObject);
+#else
+            Destroy(captureZone.gameObject);
+#endif
+        }
+        var teamObjects = piecesParent.GetComponentsInChildren<ChessTeam>();
+        foreach (var teamObject in teamObjects)
+        {
+#if UNITY_EDITOR
+            DestroyImmediate(teamObject.gameObject);
+#else
+            Destroy(teamObject.gameObject);
+#endif
+        }
+
+        SpawnTeam(Team.White);
+        SpawnTeam(Team.Black);
+    }
+
+    public void SpawnTeam(Team team)
+    {
+        GameObject teamObj;
+        if (teamPrefab == null) {
+            teamObj = new GameObject(team.ToString());
+        } else {
+            teamObj = Instantiate(teamPrefab);
+            teamObj.name = team.ToString();
+        }
+        teamObj.transform.parent = piecesParent.transform;
+        var chessTeam = teamObj.AddComponent<ChessTeam>();
+        chessTeam.Initialize(team, Rules, Board, piecePrefab);
+        Teams[team] = chessTeam;
+    }
 
     public void ClearPieces()
     {
-        var pieceObjects = piecesParent.GetComponentsInChildren<ChessPiece>();
-        foreach (var piece in pieceObjects)
+        foreach (var team in Teams.Values)
         {
-#if UNITY_EDITOR
-            DestroyImmediate(piece.gameObject);
-#else
-            Destroy(piece.gameObject);
-#endif
-        }
-        Pieces.Clear();
-    }
-
-    public void SpawnPieces()
-    {
-        ClearPieces();
-        foreach (var piecePlacement in StartingPieces)
-        {
-            var square = Board.Squares[piecePlacement.SquareId];
-            var pieceObject = Instantiate(piecePrefab, piecesParent.transform);
-            var chessPiece = pieceObject.GetComponent<ChessPiece>();
-            chessPiece.Initialize(piecePlacement.PieceType, piecePlacement.Team, square);
-            Pieces.Add(chessPiece);
+            if (team != null) team.ClearPieces();
         }
     }
 
-    public IEnumerable<ChessPiece> TeamPieces(Team team)
+    public void LoadStartingGame()
     {
-        return Pieces.FindAll(p => p.team == team);
+        Board.SpawnSquares();
+        var pgnString = Resources.Load<TextAsset>("PGN/StartingGame").text;
+        PGNData = PGNParser.Parse(pgnString);
+        CreateTeams();
+        var placements = PGNData.GetStartingPositions();
+        foreach (var placement in placements)
+        {
+            Teams[placement.Team].SpawnPiece(placement.PieceType, placement.SquareId);
+        }
     }
 
     public void LoadFromPGNFile(string filepath)
@@ -102,7 +128,7 @@ public class ChessGame : MonoBehaviour
     {
         ClearPieces();
 
-        // var pgnData = 
+        // var pgnData =
         // var moves = PGNParser.Parse(pgn);
         // foreach (var move in moves)
         // {
@@ -114,5 +140,19 @@ public class ChessGame : MonoBehaviour
         //     }
         //     piece.MoveToSquare(Board.Squares[move.ToSquareId]);
         // }
+    }
+
+    private void OnMovePiece(MovePieceEvent e)
+    {
+        Debug.Log(
+            "Piece moved! "
+                + e.Piece.name
+                + " move "
+                + e.Move.FromSquareId
+                + " -> "
+                + e.Move.ToSquareId
+        );
+        e.Piece.MoveToSquare(Board.Squares[e.Move.ToSquareId], 1f);
+        // OnMove?.Invoke(e.Move);
     }
 }

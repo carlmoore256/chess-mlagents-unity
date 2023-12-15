@@ -1,5 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using UnityEngine;
 
 public static class PGNParser
 {
@@ -12,16 +14,16 @@ public static class PGNParser
         foreach (string line in lines)
         {
             if (string.IsNullOrWhiteSpace(line)) continue;
-
-            if (line.StartsWith("[") && line.EndsWith("]"))
+            var lineTrimmed = line.Trim();
+            if (lineTrimmed.StartsWith("[") && lineTrimmed.EndsWith("]"))
             {
                 // Parsing tag pairs
-                Parse(line, ref data);
+                Parse(lineTrimmed, ref data);
             }
             else
             {
                 // Parsing moves
-                data.Moves.AddRange(ParseMoves(line));
+                data.Moves.AddRange(ParseMoves(lineTrimmed));
             }
         }
 
@@ -106,6 +108,7 @@ public static class PGNParser
     }
 }
 
+[System.Serializable]
 public class PGNData
 {
     public string Event;
@@ -117,6 +120,44 @@ public class PGNData
     public string Result;
     public string FEN;
     public List<ChessMove> Moves = new List<ChessMove>();
+
+
+    public override string ToString()
+    {
+        return $"Event: {Event}\nSite: {Site}\nDate: {Date}\nRound: {Round}\nWhite: {White}\nBlack: {Black}\nResult: {Result}\nFEN: {FEN}\nMoves: {Moves.Count}";
+    }
+
+    public string ToPGNString()
+    {
+        string pgn = "";
+
+        pgn += $"[Event \"{Event}\"]\n";
+        pgn += $"[Site \"{Site}\"]\n";
+        pgn += $"[Date \"{Date}\"]\n";
+        pgn += $"[Round \"{Round}\"]\n";
+        pgn += $"[White \"{White}\"]\n";
+        pgn += $"[Black \"{Black}\"]\n";
+        pgn += $"[Result \"{Result}\"]\n";
+        pgn += $"[FEN \"{FEN}\"]\n";
+
+        int moveNumber = 1;
+        foreach (var move in Moves)
+        {
+            if (moveNumber % 2 == 1)
+            {
+                pgn += $"{moveNumber}. ";
+            }
+            pgn += $"{move.FromSquareId}{move.ToSquareId} ";
+            moveNumber++;
+        }
+
+        return pgn;
+    }
+
+    public PiecePlacement[] GetStartingPositions()
+    {
+        return PGNParser.GetStartingPositions(FEN);
+    }
 }
 
 public class ChessMove

@@ -1,6 +1,7 @@
 using System.Linq;
 using UnityEngine;
 
+[RequireComponent(typeof(ChessGame))]
 public class PieceController : MonoBehaviour
 {
     public Team CurrentTeam { get; set; } = Team.White;
@@ -30,7 +31,7 @@ public class PieceController : MonoBehaviour
 
     public void CyclePiece()
     {
-        var pieces = _game.TeamPieces(CurrentTeam).ToList();
+        var pieces = _game.Teams[CurrentTeam].Pieces;
         _currentPieceIndex = (_currentPieceIndex + 1) % pieces.Count;
         CurrentPiece = pieces[_currentPieceIndex];
 
@@ -43,9 +44,14 @@ public class PieceController : MonoBehaviour
 
         CurrentPiece.IsControlling = true;
 
-        Debug.Log($"Current Piece: {CurrentPiece.name}, IsControlling: {CurrentPiece.IsControlling}");
+        Debug.Log(
+            $"Current Piece: {CurrentPiece.name}, IsControlling: {CurrentPiece.IsControlling}"
+        );
     }
 
+    int currentTeamIndex = 0;
+    private float lastDispatchTime = 0f;
+    private float dispatchInterval = 0.05f; // Interval in seconds
 
     private void Update()
     {
@@ -57,6 +63,30 @@ public class PieceController : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.T))
         {
             SwitchTeam();
+        }
+
+        if (Input.GetKey(KeyCode.M))
+        {
+            // convert int into team
+            var team = currentTeamIndex % 2 == 0 ? Team.White : Team.Black;
+            // _game.Teams[team].MoveRandomPiece();
+            currentTeamIndex++;
+
+            if (Time.time - lastDispatchTime >= dispatchInterval)
+            {
+                _game.Teams[team].MoveRandomPiece();
+                lastDispatchTime = Time.time;
+            }
+            if (currentTeamIndex > 100)
+            {
+                currentTeamIndex = 0;
+            }
+        }
+
+        if (Input.GetKeyDown(KeyCode.V))
+        {
+            CurrentPiece.IsControlling = false;
+            GameObject.Find("Main Camera").GetComponent<Camera>().enabled = true;
         }
     }
 }
