@@ -6,7 +6,7 @@ using UnityEngine;
 public class CaptureZone : MonoBehaviour
 {
     private List<Vector3> _piecePositions = new List<Vector3>();
-    private Vector2 gridSize = new Vector2(3, 3); // Adjust grid size as needed
+    private Vector2 gridSize = new Vector2(10, 10); // Adjust grid size as needed
     private float pieceSize = 0.8f; // Adjust piece size as needed
     private int currentRow = 0;
     private int currentColumn = 0;
@@ -17,15 +17,17 @@ public class CaptureZone : MonoBehaviour
     {
         piece.transform.SetParent(transform);
         piece.transform.localPosition = Vector3.zero;
-        piece.GetComponent<Rigidbody>().isKinematic = true;
+        // piece.GetComponent<Rigidbody>().isKinematic = true;
         piece.GetComponent<Animation>().Play();
-        AssignNewPosition(piece);
+        // AssignNewPosition(piece);
         Pieces.Add(piece);
     }
 
-    public void RemovePiece(ChessPiece piece)
+    public void ReturnPiece(ChessPiece piece)
     {
         Pieces.Remove(piece);
+        piece.transform.SetParent(null);
+        piece.GetComponent<Animation>().Stop();
     }
 
     public void ReturnPieces(Action<ChessPiece> onReturnPiece = null)
@@ -33,7 +35,7 @@ public class CaptureZone : MonoBehaviour
         foreach (var piece in Pieces)
         {
             piece.transform.SetParent(null);
-            piece.GetComponent<Rigidbody>().isKinematic = false;
+            // piece.GetComponent<Rigidbody>().isKinematic = false;
             piece.GetComponent<Animation>().Stop();
             onReturnPiece?.Invoke(piece);
         }

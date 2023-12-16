@@ -47,4 +47,11 @@ public static class ChessDataHelpers
 
         return moveVectors;
     }
+
+    public static float[] GetOneHotPieceVector(PieceType pieceType)
+    {
+        float[] oneHot = new float[6];
+        oneHot[(int)pieceType] = 1f;
+        return oneHot;
+    }
 }

@@ -18,7 +18,8 @@ public class ChessGame : MonoBehaviour
     public GameObject teamPrefab;
     public GameObject piecesParent;
     public GameObject capturedZonePrefab;
-    public IEnumerable<ChessPiece> Pieces => Teams[Team.White].Pieces.Concat(Teams[Team.Black].Pieces);
+    public string startingGamePGN = "PGN/StartingGame";
+    public IEnumerable<ChessPiece> Pieces => Teams[Team.White].ActivePieces.Concat(Teams[Team.Black].ActivePieces);
     public ChessTeam WhiteTeam => Teams[Team.White];
     public ChessTeam BlackTeam => Teams[Team.Black];
 
@@ -109,14 +110,27 @@ public class ChessGame : MonoBehaviour
     public void LoadStartingGame()
     {
         Board.SpawnSquares();
-        var pgnString = Resources.Load<TextAsset>("PGN/StartingGame").text;
+        var pgnString = Resources.Load<TextAsset>(startingGamePGN).text;
         PGNData = PGNParser.Parse(pgnString);
         CreateTeams();
         var placements = PGNData.GetStartingPositions();
-        foreach (var placement in placements)
-        {
-            Teams[placement.Team].SpawnPiece(placement.PieceType, placement.SquareId);
-        }
+
+
+        var whitePlacements = placements.Where(p => p.Team == Team.White);
+        var blackPlacements = placements.Where(p => p.Team == Team.Black);
+
+        Teams[Team.White].ClearPieces();
+        Teams[Team.Black].ClearPieces();
+
+        Teams[Team.White].SpawnPieces(whitePlacements.ToList());
+        Teams[Team.Black].SpawnPieces(blackPlacements.ToList());
+
+        // int pieceIndex = 0;
+        // foreach (var placement in placements)
+        // {
+        //     Teams[placement.Team].SpawnPiece(placement.PieceType, placement.SquareId, pieceIndex);
+        //     pieceIndex++;
+        // }
     }
 
     public void LoadFromPGNFile(string filepath)

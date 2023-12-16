@@ -8,21 +8,6 @@ using UnityEngine.Events;
 [RequireComponent(typeof(ChessGame))]
 public class ChessEnvController : MonoBehaviour
 {
-    [System.Serializable]
-    public class PlayerInfo
-    {
-        public ChessAgent Agent;
-
-        [HideInInspector]
-        public Vector3 StartingPos;
-
-        [HideInInspector]
-        public Quaternion StartingRot;
-
-        [HideInInspector]
-        public Rigidbody Rb;
-    }
-
     public UnityEvent<Team> OnTargetTouched;
 
     /// <summary>
@@ -32,26 +17,19 @@ public class ChessEnvController : MonoBehaviour
     [Tooltip("Max Environment Steps")]
     public int MaxEnvironmentSteps = 25000;
 
-    /// <summary>
-    /// The area bounds.
-    /// </summary>
-
-    /// <summary>
-    /// We will be changing the ground material based on success/failue
-    /// </summary>
-
-
     //List of Agents On Platform
     // public List<ChessAgent> AgentsList;
 
     private ChessSettings _chessSettings;
-
     private SimpleMultiAgentGroup _whiteAgents;
     private SimpleMultiAgentGroup _blackAgents;
-
+    public List<ChessAgent> allAgents = new List<ChessAgent>();
     private ChessGame _game;
 
-    private int _agentIndex = 0;
+    public ChessTeamAgent whiteTeamAgent;
+    public ChessTeamAgent blackTeamAgent;
+
+    private Team _currentTeam = Team.White;
 
     private int m_ResetTimer;
 
@@ -64,28 +42,20 @@ public class ChessEnvController : MonoBehaviour
         _whiteAgents = new SimpleMultiAgentGroup();
         _blackAgents = new SimpleMultiAgentGroup();
 
-        _game
-            .WhiteTeam
-            .Pieces
-            .ForEach(
-                (piece) =>
-                {
-                    var agent = piece.GetComponent<ChessAgent>();
-                    if (agent != null)
-                    {
-                        _whiteAgents.RegisterAgent(agent);
-                    }
-                }
-            );
 
-        // ResetScene();
+        RegisterTeam(Team.White);
+        RegisterTeam(Team.Black);
+
+
+        whiteTeamAgent = _game.Teams[Team.White].GetComponent<ChessTeamAgent>();
+        blackTeamAgent = _game.Teams[Team.Black].GetComponent<ChessTeamAgent>();
     }
 
     private void RegisterTeam(Team team)
     {
         _game
             .Teams[team]
-            .Pieces
+            .ActivePieces
             .ForEach(
                 (piece) =>
                 {
@@ -121,32 +91,36 @@ public class ChessEnvController : MonoBehaviour
                 _blackAgents.AddGroupReward(-pieceValue);
             }
         };
+
+        if (!allAgents.Contains(agent))
+        {
+            allAgents.Add(agent);
+        }
     }
 
     public void NextTurn()
-    {
-        // var agents = AgentsList.FindAll(x => x.Piece.pieceType == PieceType.Pawn);
-        // AgentsList[_agentIndex].RequestDecision();
-        // if (agents.Count() == 0)
-        // {
-        //     return;
-        // }
-        // agents.ElementAt(_agentIndex).RequestDecision();
-        // _agentIndex++;
-        // if (_agentIndex >= agents.Count())
-        // {
-        //     _agentIndex = 0;
-        // }
+    {        
+        Debug.Log("Next Turn" + _currentTeam);
+        if (_currentTeam == Team.White)
+        {
+            whiteTeamAgent.RequestAction();
+            _currentTeam = Team.Black;
+        }
+        else
+        {
+            blackTeamAgent.RequestAction();
+            _currentTeam = Team.White;
+        }
     }
 
     private void Update()
     {
-        if (Input.GetKey(KeyCode.Space))
+        if (Input.GetKeyDown(KeyCode.Space))
         {
             NextTurn();
         }
 
-        if (Input.GetKey(KeyCode.X))
+        if (Input.GetKeyDown(KeyCode.X))
         {
             EndEpisode();
         }
@@ -221,9 +195,9 @@ public class ChessEnvController : MonoBehaviour
         Debug.Log("Resetting Scene");
 
         // Reset Agents
-        // foreach (var item in AgentsList)
-        // {
-        //     item.Reset();
-        // }
+        foreach (var item in allAgents)
+        {
+            item.Reset();
+        }
     }
 }

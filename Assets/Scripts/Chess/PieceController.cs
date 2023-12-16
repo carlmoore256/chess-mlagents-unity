@@ -1,5 +1,6 @@
 using System.Linq;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 [RequireComponent(typeof(ChessGame))]
 public class PieceController : MonoBehaviour
@@ -31,7 +32,7 @@ public class PieceController : MonoBehaviour
 
     public void CyclePiece()
     {
-        var pieces = _game.Teams[CurrentTeam].Pieces;
+        var pieces = _game.Teams[CurrentTeam].ActivePieces;
         _currentPieceIndex = (_currentPieceIndex + 1) % pieces.Count;
         CurrentPiece = pieces[_currentPieceIndex];
 
@@ -65,6 +66,13 @@ public class PieceController : MonoBehaviour
             SwitchTeam();
         }
 
+        // if (Input.GetKeyDown(KeyCode.Space))
+        // {
+        //     var team = currentTeamIndex % 2 == 0 ? Team.White : Team.Black;
+        //     currentTeamIndex++;
+        //     _game.Teams[team].MoveRandomPiece();
+        // }
+
         if (Input.GetKey(KeyCode.M))
         {
             // convert int into team
@@ -87,6 +95,20 @@ public class PieceController : MonoBehaviour
         {
             CurrentPiece.IsControlling = false;
             GameObject.Find("Main Camera").GetComponent<Camera>().enabled = true;
+        }
+
+        if (Input.GetKeyDown(KeyCode.B))
+        {
+            var team = currentTeamIndex % 2 == 0 ? Team.White : Team.Black;
+            // _game.Teams[team].MoveRandomPiece();
+            currentTeamIndex++;
+
+            _game.Teams[team].MoveRandomPiece(PieceType.Bishop);
+        }
+
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            SceneManager.LoadScene(SceneManager.GetActiveScene().name);
         }
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Unity.MLAgents.Actuators;
 using UnityEngine;
 
@@ -15,13 +16,17 @@ public class MovePieceEvent
     }
 }
 
-[RequireComponent(typeof(MeshCollider))]
+// [RequireComponent(typeof(MeshCollider))]
 public class ChessPiece : MonoBehaviour
 {
     public string Id;
     public PieceType pieceType;
     public Team team;
     public ChessSquare CurrentSquare { get; private set; }
+
+    public List<Move> NextMoves { get; private set; }
+    public IEnumerable<ChessSquare> ThreatenedSquares => NextMoves.Select(m => m.ToSquare);
+
     public bool HasMoved { get; private set; }
     public bool IsPromoted { get; private set; }
     public bool IsCaptured { get; set; }
@@ -38,6 +43,8 @@ public class ChessPiece : MonoBehaviour
         }
     }
 
+    public int TeamPieceIndex;
+
     public int Value => PieceValue(pieceType);
     public List<Move> Moves { get; private set; }
     public ChessRules Rules { get; private set; } // meh whatever
@@ -51,6 +58,8 @@ public class ChessPiece : MonoBehaviour
     public Camera povCamera;
     public Action<ChessPiece> OnInitialized;
     public Action<ChessPiece> OnCaptured;
+    public Action<ChessPiece> OnReset;
+    public Action<Move> OnMove;
 
     private ChessSquare _initialSquare;
 
@@ -72,42 +81,20 @@ public class ChessPiece : MonoBehaviour
         Team team,
         ChessRules rules = null,
         ChessSquare square = null,
-        string id = null
+        string id = null,
+        int teamPieceIndex = 0
     )
     {
-        this.pieceType = pieceType;
         this.team = team;
         IsPromoted = false;
         IsCaptured = false;
         HasMoved = false;
-        Debug.Log("Setting rules to " + rules);
         Rules = rules;
+        TeamPieceIndex = teamPieceIndex;
         Id = id ?? Guid.NewGuid().ToString();
 
         // spawn the piece model
-        if (_pieceModel != null)
-        {
-#if UNITY_EDITOR
-            DestroyImmediate(_pieceModel.gameObject);
-#else
-            Destroy(_pieceModel.gameObject);
-#endif
-        }
-
-        gameObject.name = $"{team.ToString().ToLower()}{pieceType}";
-
-        _pieceModel = chessPieces.SpawnPieceModel(pieceType, team, transform).transform;
-
-        GetComponent<MeshCollider>().sharedMesh = _pieceModel
-            .GetComponentInChildren<MeshFilter>()
-            .sharedMesh;
-        if (team == Team.Black)
-        {
-            // we have to double rotate (because its already rotated)
-            _pieceModel.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
-            // transform.Rotate(0f, 180f, 0f);
-            transform.rotation = Quaternion.Euler(0f, 180f, 0f);
-        }
+        SpawnPieceModel(pieceType);
 
         _initialSquare = square;
 
@@ -117,6 +104,41 @@ public class ChessPiece : MonoBehaviour
         }
 
         OnInitialized?.Invoke(this);
+        NextMoves = GetValidMoves();
+    }
+
+    private void SpawnPieceModel(PieceType type)
+    {
+        if (_pieceModel != null)
+        {
+#if UNITY_EDITOR
+            DestroyImmediate(_pieceModel.gameObject);
+#else
+            Destroy(_pieceModel.gameObject);
+#endif
+        }
+
+        gameObject.name = $"{team.ToString().ToLower()}{type}";
+
+        if (IsPromoted)
+            gameObject.name += "_promoted";
+
+        _pieceModel = chessPieces.SpawnPieceModel(type, team, transform).transform;
+
+        // GetComponent<MeshCollider>().sharedMesh = _pieceModel
+        //     .GetComponentInChildren<MeshFilter>()
+        //     .sharedMesh;
+        if (team == Team.Black)
+        {
+            // we have to double rotate (because its already rotated)
+            _pieceModel.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+            // transform.Rotate(0f, 180f, 0f);
+            transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+        }
+
+        // _pieceModel = chessPieces.SpawnPieceModel(pieceType, team, transform).transform;
+        pieceType = type;
+        Debug.Log("Spawning piece model " + type + " for " + team + " on " + gameObject.name);
     }
 
     public void ResetToStartingPosition()
@@ -126,7 +148,13 @@ public class ChessPiece : MonoBehaviour
             Debug.LogError("No initial square set!");
             return;
         }
+        if (IsPromoted)
+        {
+            IsPromoted = false;
+            SpawnPieceModel(PieceType.Pawn);
+        }
         MoveToSquare(_initialSquare, 0f);
+        OnReset?.Invoke(this);
     }
 
     public void MakeMove(Move move, float duration = 0.5f)
@@ -135,6 +163,25 @@ public class ChessPiece : MonoBehaviour
         if (move.IsCapture)
         {
             move.CapturedPiece.Capture();
+        }
+        if (pieceType == PieceType.Pawn && move.IsPromotion)
+        {
+            Promote(PieceType.Queen);
+        }
+
+        OnMove?.Invoke(move);
+
+        // NextMoves = GetValidMoves();
+        // ThreatenedSquares = GetValidMoves().Select(m => m.ToSquare).ToList();
+    }
+
+    public void Promote(PieceType toType)
+    {
+        if (pieceType == PieceType.Pawn)
+        {
+            IsPromoted = true;
+            SpawnPieceModel(toType);
+            // GetComponent<MeshCollider>().sharedMesh = _pieceModel.GetComponentInChildren<MeshFilter>().sharedMesh;
         }
     }
 
