@@ -17,7 +17,7 @@ public class ChessEnvControllerEditor : Editor
 
         if (GUILayout.Button("Next Turn"))
         {
-            controller.NextTurn();
+            // controller.NextTurn();
         }
     }
 }

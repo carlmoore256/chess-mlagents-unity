@@ -106,18 +106,18 @@ public class ChessBoard : MonoBehaviour
         }
     }
 
-    public ChessPiece SpawnPieceAtSquare(
-        GameObject piecePrefab,
-        string squareId,
-        PieceType pieceType,
-        Team team,
-        Transform parent = null
-    )
-    {
-        var square = Squares[squareId];
-        var pieceObject = Instantiate(piecePrefab, parent);
-        var chessPiece = pieceObject.GetComponent<ChessPiece>();
-        chessPiece.Initialize(pieceType, team, null, square);
-        return chessPiece;
-    }
+    // public ChessPiece SpawnPieceAtSquare(
+    //     GameObject piecePrefab,
+    //     string squareId,
+    //     PieceType pieceType,
+    //     Team team,
+    //     Transform parent = null
+    // )
+    // {
+    //     var square = Squares[squareId];
+    //     var pieceObject = Instantiate(piecePrefab, parent);
+    //     var chessPiece = pieceObject.GetComponent<ChessPiece>();
+    //     chessPiece.Initialize(pieceType, team, null, square);
+    //     return chessPiece;
+    // }
 }

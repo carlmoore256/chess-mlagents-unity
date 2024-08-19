@@ -11,32 +11,76 @@ public class CaptureZone : MonoBehaviour
     private int currentRow = 0;
     private int currentColumn = 0;
 
+    public bool isRenderingEnabled = false;
+
     public List<ChessPiece> Pieces = new List<ChessPiece>();
+
+
+    private void OnRenderingEnabledChanged(bool enabled)
+    {
+        if (enabled)
+        {
+            foreach (var piece in Pieces)
+            {
+                // piece.gameObject.
+            }
+        }
+    }
 
     public void AddPiece(ChessPiece piece)
     {
         piece.transform.SetParent(transform);
         piece.transform.localPosition = Vector3.zero;
-        // piece.GetComponent<Rigidbody>().isKinematic = true;
-        piece.GetComponent<Animation>().Play();
-        // AssignNewPosition(piece);
+        if (!isRenderingEnabled)
+        {
+            TogglePieceRendering(piece, false);
+        }
+        else
+        {
+            piece.GetComponent<Animation>().Play();
+
+        }
         Pieces.Add(piece);
     }
 
-    public void ReturnPiece(ChessPiece piece)
+    private void TogglePieceRendering(ChessPiece piece, bool enabled)
     {
-        Pieces.Remove(piece);
+        var meshRenderers = piece.gameObject.GetComponentsInChildren<MeshRenderer>();
+        foreach (var renderer in meshRenderers)
+        {
+            renderer.enabled = enabled;
+        }
+
+        var canvasRenderers = piece.gameObject.GetComponentsInChildren<Canvas>();
+        foreach (var renderer in canvasRenderers)
+        {
+            renderer.enabled = enabled;
+        }
+    }
+
+    public void ReturnPiece(ChessPiece piece, bool remove = true)
+    {
+        if (!isRenderingEnabled)
+        {
+            TogglePieceRendering(piece, true);
+        }
+        else
+        {
+            piece.GetComponent<Animation>().Stop();
+        }
+        if (remove)
+        {
+            Pieces.Remove(piece);
+
+        }
         piece.transform.SetParent(null);
-        piece.GetComponent<Animation>().Stop();
     }
 
     public void ReturnPieces(Action<ChessPiece> onReturnPiece = null)
     {
         foreach (var piece in Pieces)
         {
-            piece.transform.SetParent(null);
-            // piece.GetComponent<Rigidbody>().isKinematic = false;
-            piece.GetComponent<Animation>().Stop();
+            ReturnPiece(piece, false);
             onReturnPiece?.Invoke(piece);
         }
         Pieces.Clear();

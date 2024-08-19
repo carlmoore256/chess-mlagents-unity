@@ -4,6 +4,7 @@ using System.Linq;
 using Unity.MLAgents;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.SceneManagement;
 
 [RequireComponent(typeof(ChessGame))]
 public class ChessEnvController : MonoBehaviour
@@ -17,187 +18,160 @@ public class ChessEnvController : MonoBehaviour
     [Tooltip("Max Environment Steps")]
     public int MaxEnvironmentSteps = 25000;
 
-    //List of Agents On Platform
-    // public List<ChessAgent> AgentsList;
-
     private ChessSettings _chessSettings;
-    private SimpleMultiAgentGroup _whiteAgents;
-    private SimpleMultiAgentGroup _blackAgents;
-    public List<ChessAgent> allAgents = new List<ChessAgent>();
     private ChessGame _game;
-
     public ChessTeamAgent whiteTeamAgent;
     public ChessTeamAgent blackTeamAgent;
-
+    private int _currentStep = 0;
     private Team _currentTeam = Team.White;
+    public bool IsTraining { get; private set; } = false;
 
-    private int m_ResetTimer;
+    private bool _nextStepRequested = false;
 
-    public float DecisionDelay = 0.1f;
+    public bool enableTraining = true;
+
+    private bool _hasStepped = false;
+
+    public void RequestNextStep()
+    {
+        _nextStepRequested = true;
+    }
 
     void Start()
     {
         _game = GetComponent<ChessGame>();
         _chessSettings = FindObjectOfType<ChessSettings>();
-        _whiteAgents = new SimpleMultiAgentGroup();
-        _blackAgents = new SimpleMultiAgentGroup();
 
-
-        RegisterTeam(Team.White);
-        RegisterTeam(Team.Black);
-
+        Academy.Instance.AutomaticSteppingEnabled = false;
 
         whiteTeamAgent = _game.Teams[Team.White].GetComponent<ChessTeamAgent>();
         blackTeamAgent = _game.Teams[Team.Black].GetComponent<ChessTeamAgent>();
+
+        whiteTeamAgent.OnTurnEnded += TeamAgentStep;
+        blackTeamAgent.OnTurnEnded += TeamAgentStep;
+        whiteTeamAgent.OnRequestStep += (agent) => RequestNextStep();
+        blackTeamAgent.OnRequestStep += (agent) => RequestNextStep();
+        whiteTeamAgent.OnRequestEpisodeEnd += HandleEndEpisode;
+        blackTeamAgent.OnRequestEpisodeEnd += HandleEndEpisode;
     }
 
-    private void RegisterTeam(Team team)
+    private void HandleEndEpisode(ChessTeamAgent endingAgent)
     {
-        _game
-            .Teams[team]
-            .ActivePieces
-            .ForEach(
-                (piece) =>
-                {
-                    RegisterChessPiece(piece);
-                }
-            );
+        blackTeamAgent._EndEpisode(_chessSettings.teamWinReward);
+        whiteTeamAgent._EndEpisode(_chessSettings.teamWinReward);
+        // SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+        _currentStep = 0;
+        _currentTeam = Team.White;
+        whiteTeamAgent.RequestDecision();
+        // Academy.Instance.EnvironmentStep();
     }
 
-    public void RegisterChessPiece(ChessPiece piece)
+    private void TeamAgentStep(ChessTeamAgent teamAgent)
     {
-        var agent = piece.GetComponent<ChessAgent>();
-        if (agent != null)
-        {
-            if (piece.team == Team.White)
-            {
-                _whiteAgents.RegisterAgent(agent);
-            }
-            else
-            {
-                _blackAgents.RegisterAgent(agent);
-            }
-        }
+        Debug.Log("Team Agent Step: " + teamAgent.Team);
+        _currentTeam = ChessTeam.OpposingTeam(teamAgent.Team);
+        // Academy.Instance.EnvironmentStep();
+        // teamAgent.RequestDecision();
 
-        piece.OnCaptured += (p) =>
-        {
-            var pieceValue = p.Value * _chessSettings.pieceValueMultiplier;
-            if (p.team == Team.White)
-            {
-                _whiteAgents.AddGroupReward(-pieceValue);
-            }
-            else
-            {
-                _blackAgents.AddGroupReward(-pieceValue);
-            }
-        };
-
-        if (!allAgents.Contains(agent))
-        {
-            allAgents.Add(agent);
-        }
-    }
-
-    public void NextTurn()
-    {        
-        Debug.Log("Next Turn" + _currentTeam);
         if (_currentTeam == Team.White)
         {
-            whiteTeamAgent.RequestAction();
-            _currentTeam = Team.Black;
+            whiteTeamAgent.RequestDecision();
         }
         else
         {
-            blackTeamAgent.RequestAction();
-            _currentTeam = Team.White;
-        }
-    }
-
-    private void Update()
-    {
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            NextTurn();
+            blackTeamAgent.RequestDecision();
         }
 
-        if (Input.GetKeyDown(KeyCode.X))
+        _currentStep++;
+
+        if (_currentStep >= MaxEnvironmentSteps && MaxEnvironmentSteps > 0)
         {
-            EndEpisode();
-        }
-    }
-
-    private void OnEnable()
-    {
-        EventBus.Subscribe<MovePieceEvent>(OnMovePiece);
-    }
-
-    private void OnDisable()
-    {
-        EventBus.Unsubscribe<MovePieceEvent>(OnMovePiece);
-    }
-
-    private void OnMovePiece(MovePieceEvent e)
-    {
-        // if (e.Piece.IsCaptured)
-        // {
-        // if (e.Piece.team == Team.White)
-        // {
-        //     m_WhiteAgentGroup.AddGroupReward(-0.1f);
-        // }
-        // else
-        // {
-        //     m_BlackAgentGroup.AddGroupReward(-0.1f);
-        // }
-        // }
-    }
-
-    void FixedUpdate()
-    {
-        m_ResetTimer += 1;
-        if (m_ResetTimer >= MaxEnvironmentSteps && MaxEnvironmentSteps > 0)
-        {
-            _whiteAgents.GroupEpisodeInterrupted();
-            _blackAgents.GroupEpisodeInterrupted();
             ResetScene();
         }
     }
 
-    public void TargetTouched(ChessAgent agent)
+    private void StepForward()
     {
-        if (agent.Team == Team.White)
+        Debug.Log("Step Forward");
+        if (!whiteTeamAgent.IsReady || !blackTeamAgent.IsReady)
         {
-            _whiteAgents.AddGroupReward(1 - (float)m_ResetTimer / MaxEnvironmentSteps);
-            _blackAgents.AddGroupReward(-1);
+            InitializeTeams();
         }
-        else
-        {
-            _blackAgents.AddGroupReward(1 - (float)m_ResetTimer / MaxEnvironmentSteps);
-            _whiteAgents.AddGroupReward(-1);
-        }
-        _blackAgents.EndGroupEpisode();
-        _whiteAgents.EndGroupEpisode();
-        OnTargetTouched?.Invoke(agent.Team);
-        ResetScene();
+
+        TeamAgentStep(_currentTeam == Team.White ? whiteTeamAgent : blackTeamAgent);
+        // if (_currentTeam == Team.White)
+        // {
+        //     whiteTeamAgent.RequestDecision();
+        // }
+        // else
+        // {
+        //     blackTeamAgent.RequestDecision();
+        // }
+
+        _hasStepped = false;
+
+        Academy.Instance.EnvironmentStep();
+        _currentTeam = ChessTeam.OpposingTeam(_currentTeam);
     }
 
-    public void EndEpisode(float whiteReward = -1f, float blackReward = -1f)
+    private void InitializeTeams()
     {
-        _whiteAgents.AddGroupReward(whiteReward);
-        _blackAgents.AddGroupReward(blackReward);
-        _whiteAgents.EndGroupEpisode();
-        _blackAgents.EndGroupEpisode();
-        ResetScene();
+        whiteTeamAgent.IsReady = true;
+        blackTeamAgent.IsReady = true;
+        whiteTeamAgent.Initialize();
+        blackTeamAgent.Initialize();
+    }
+
+    private void StartTraining()
+    {
+        Debug.Log("Start Training");
+        IsTraining = true;
+        InitializeTeams();
+        whiteTeamAgent.RequestDecision();
+        Academy.Instance.EnvironmentStep();
+    }
+
+    private void Update()
+    {
+        if (!IsTraining && _game.IsInitialized && enableTraining)
+        {
+            StartTraining();
+        }
+
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            StepForward();
+        }
+
+        if (Input.GetKeyDown(KeyCode.X))
+        {
+            ResetScene();
+        }
+
+        if (_nextStepRequested)
+        {
+            Academy.Instance.EnvironmentStep();
+            // _nextStepRequested = false;
+        }
     }
 
     public void ResetScene()
     {
-        m_ResetTimer = 0;
         Debug.Log("Resetting Scene");
-
-        // Reset Agents
-        foreach (var item in allAgents)
-        {
-            item.Reset();
-        }
+        _currentStep = 0;
+        whiteTeamAgent._EndEpisode();
+        blackTeamAgent._EndEpisode();
+        _currentTeam = Team.White;
     }
 }
+
+// void FixedUpdate()
+// {
+//     m_ResetTimer += 1;
+//     if (m_ResetTimer >= MaxEnvironmentSteps && MaxEnvironmentSteps > 0)
+//     {
+//         _whiteAgents.GroupEpisodeInterrupted();
+//         _blackAgents.GroupEpisodeInterrupted();
+//         ResetScene();
+//     }
+// }

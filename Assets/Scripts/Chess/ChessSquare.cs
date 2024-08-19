@@ -22,4 +22,9 @@ public class ChessSquare : MonoBehaviour
         gameObject.name = id;
         gameObject.tag = Team.White == color ? "whiteSquare" : "blackSquare";
     }
+
+    public override string ToString()
+    {
+        return $"Square: {Id}";
+    }
 }

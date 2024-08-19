@@ -15,7 +15,9 @@ public class ChessTeam : MonoBehaviour
     public GameObject capturedZonePrefab;
     private CaptureZone _captureZone;
     private float _captureZoneOffset = 9f;
-    
+
+    public float moveSpeed = 0.5f;
+
     public void Initialize(Team team, ChessRules rules, ChessBoard board, GameObject piecePrefab)
     {
         Team = team;
@@ -59,6 +61,7 @@ public class ChessTeam : MonoBehaviour
             {
                 piece.transform.parent = transform;
                 piece.IsCaptured = false;
+                ActivePieces.Add(piece);
             }
         );
     }
@@ -87,6 +90,7 @@ public class ChessTeam : MonoBehaviour
 #endif
         }
         ActivePieces.Clear();
+        AllPieces.Clear();
     }
 
     public void SpawnPiece(PieceType pieceType, string squareId, int pieceIndex = 0)
@@ -103,9 +107,16 @@ public class ChessTeam : MonoBehaviour
         chessPiece.OnCaptured += OnPieceCaptured;
         chessPiece.OnReset += (piece) =>
         {
-            _captureZone.ReturnPiece(piece);
-            piece.transform.parent = transform;
-            ActivePieces.Add(piece);
+            if (piece.IsCaptured && piece.transform.parent != transform)
+            {
+                _captureZone.ReturnPiece(piece);
+                piece.transform.parent = transform;
+            }
+
+            if (!ActivePieces.Contains(piece))
+            {
+                ActivePieces.Add(piece);
+            }
         };
     }
 
@@ -115,8 +126,9 @@ public class ChessTeam : MonoBehaviour
         _captureZone.AddPiece(piece);
     }
 
-    public void SpawnPieces(List<PiecePlacement> placements)
+    public void SpawnPieces(List<PiecePlacement> placements, bool clear = true)
     {
+        if (clear) ClearPieces();
         int pieceIndex = 0;
         foreach (var placement in placements)
         {
@@ -143,7 +155,7 @@ public class ChessTeam : MonoBehaviour
             if (moves.Count > 0)
             {
                 var move = moves[UnityEngine.Random.Range(0, moves.Count)];
-                piece.MakeMove(move);
+                piece.MakeMove(move, moveSpeed);
                 return;
             }
         }
@@ -168,7 +180,7 @@ public class ChessTeam : MonoBehaviour
                 if (moves.Count > 0)
                 {
                     var move = moves[UnityEngine.Random.Range(0, moves.Count)];
-                    piece.MakeMove(move);
+                    piece.MakeMove(move, moveSpeed);
                     return;
                 }
             }

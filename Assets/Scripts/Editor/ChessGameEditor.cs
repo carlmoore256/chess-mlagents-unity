@@ -20,11 +20,6 @@ public class ChessGameEditor : Editor
             game.LoadStartingGame();
         }
 
-        if (GUILayout.Button("Clear Pieces"))
-        {
-            game.ClearPieces();
-        }
-
         if (GUILayout.Button("Move Random Piece") && !string.IsNullOrEmpty(squareId))
         {
             // var randomPiece = game.Pieces[Random.Range(0, game.Pieces.Count())];

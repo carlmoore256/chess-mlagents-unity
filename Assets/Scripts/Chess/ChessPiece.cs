@@ -103,7 +103,7 @@ public class ChessPiece : MonoBehaviour
             MoveToSquare(square, 0f);
         }
 
-        OnInitialized?.Invoke(this);
+        // OnInitialized?.Invoke(this);
         NextMoves = GetValidMoves();
     }
 
@@ -136,9 +136,7 @@ public class ChessPiece : MonoBehaviour
             transform.rotation = Quaternion.Euler(0f, 180f, 0f);
         }
 
-        // _pieceModel = chessPieces.SpawnPieceModel(pieceType, team, transform).transform;
         pieceType = type;
-        Debug.Log("Spawning piece model " + type + " for " + team + " on " + gameObject.name);
     }
 
     public void ResetToStartingPosition()
@@ -153,6 +151,9 @@ public class ChessPiece : MonoBehaviour
             IsPromoted = false;
             SpawnPieceModel(PieceType.Pawn);
         }
+
+        // transform.position = _initialSquare.transform.position;
+        
         MoveToSquare(_initialSquare, 0f);
         OnReset?.Invoke(this);
     }
@@ -170,6 +171,7 @@ public class ChessPiece : MonoBehaviour
         }
 
         OnMove?.Invoke(move);
+        EventBus.Publish(new MovePieceEvent(this, move));
 
         // NextMoves = GetValidMoves();
         // ThreatenedSquares = GetValidMoves().Select(m => m.ToSquare).ToList();
@@ -193,7 +195,7 @@ public class ChessPiece : MonoBehaviour
             transform.position = square.transform.position + pieceOffset;
             return;
         }
-        if (_moveCoroutine != null)
+        else if (_moveCoroutine != null)
             StopCoroutine(_moveCoroutine);
         _moveCoroutine = this.LerpAction(
             (t) =>
@@ -245,5 +247,11 @@ public class ChessPiece : MonoBehaviour
             default:
                 return 0;
         }
+    }
+
+
+    public override string ToString()
+    {
+        return $"[ChessPiece] {Id} Team: {team} CurrentSquare: {CurrentSquare}";
     }
 }

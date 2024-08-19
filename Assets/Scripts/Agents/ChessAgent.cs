@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using Unity.Barracuda;
@@ -5,13 +6,35 @@ using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Policies;
 using Unity.MLAgents.Sensors;
+using Unity.MLAgents.Sensors.Reflection;
 using UnityEngine;
+using UnityEngine.Events;
+
+public class AgentActionEvent
+{
+    public ChessAgent Agent;
+    public Move Move;
+
+    public AgentActionEvent(ChessAgent agent, Move move)
+    {
+        Agent = agent;
+        Move = move;
+    }
+
+    public AgentActionEvent(ChessAgent agent)
+    {
+        Agent = agent;
+        Move = null;
+    }
+}
 
 
 [RequireComponent(typeof(ChessPiece))]
 public class ChessAgent : Agent
 {
     public ChessPiece Piece { get; private set; }
+
+    [Observable]
     public Team Team
     {
         get => Piece.team;
@@ -22,15 +45,15 @@ public class ChessAgent : Agent
     public float rotSign;
     public Vector3 initialPos;
     public Quaternion initialRot;
-    public PieceType pieceType;
+
+    [Observable]
+    public PieceType PieceType => Piece.pieceType;
 
     public int numTopVectors = 5;
 
     private float _forwardSpeed = 0.5f;
     private float _lateralSpeed = 0.5f;
-
     private float _existential = 0.01f;
-    private float _health = 1f;
 
     private ChessSettings _chessSettings;
     private BehaviorParameters _behaviorParameters;
@@ -38,25 +61,32 @@ public class ChessAgent : Agent
     private ChessEnvController _chessEnvController;
     private List<Move> _nextMoves;
     private bool _isInitialized = false;
+    public UnityEvent<float> OnRewardChanged;
+
+    public Action<ChessAgent> OnActionFailed;
+    public Action<ChessAgent> OnActionSucceeded;
+
+    public float moveSpeed = 0.5f;
 
     private void Awake()
     {
-        // initialPos = transform.position;
-        // initialRot = transform.rotation;
         _chessSettings = FindObjectOfType<ChessSettings>();
         _chessEnvController = GetComponentInParent<ChessEnvController>();
         Piece = GetComponent<ChessPiece>();
-        _health = 1f;
-        gameObject.SetActive(true);
-        Debug.Log("ChessAgent Awake");
-        Piece.OnInitialized += (p) =>
-        {
-            pieceType = p.pieceType;
-            _isInitialized = true;
-            Piece.ResetToStartingPosition();
-        };
+        // Piece.OnInitialized += (p) =>
+        // {
+        //     pieceType = p.pieceType;
+        //     _isInitialized = true;
+        //     Piece.ResetToStartingPosition();
+        // };
 
-        // _nextMoves = Piece.GetValidMoves();
+        _isInitialized = true;
+
+        OnRewardChanged?.Invoke(GetCumulativeReward());
+
+        GetComponent<RayPerceptionSensorComponent3D>().SensorName = Guid.NewGuid().ToString();
+        _behaviorParameters = GetComponent<BehaviorParameters>();
+        _behaviorParameters.TeamId = Team.White == Team ? 0 : 1;
     }
 
     public void SetInitialTransform(Vector3 position, Quaternion rotation)
@@ -67,24 +97,27 @@ public class ChessAgent : Agent
 
     public void Reset()
     {
+        // EndEpisode();
         gameObject.SetActive(true);
         Piece.ResetToStartingPosition();
-        _health = 1f;
+        OnRewardChanged?.Invoke(GetCumulativeReward());
+        _behaviorParameters.TeamId = Team.White == Team ? 0 : 1;
+
     }
 
     private float[] GetOneHotPieceType()
     {
-        return ChessDataHelpers.GetOneHotPieceVector(pieceType);
+        return ChessDataHelpers.GetOneHotPieceVector(PieceType);
     }
 
     public override void Initialize()
     {
-        if (!_isInitialized)
-        {
-            Debug.LogError("[Initialize] ChessAgent FAILED to initialize!");
-            return;
-        }
-        _health = 1f;
+        // if (!_isInitialized)
+        // {
+        //     Debug.LogError("Initialize called by mlagents in ChessAgent, but ChessPiece has not yet initialized", gameObject);
+        //     return;
+        // }
+        OnRewardChanged?.Invoke(GetCumulativeReward());
         Debug.Log("[Initialize] ChessAgent Initialized");
         if (_chessEnvController != null)
         {
@@ -94,8 +127,6 @@ public class ChessAgent : Agent
         {
             _existential = 1f / MaxStep;
         }
-
-        // initialPos = transform.position;
 
         _behaviorParameters = gameObject.GetComponent<BehaviorParameters>();
         if (Team == Team.White)
@@ -111,11 +142,11 @@ public class ChessAgent : Agent
         _resetParameters = Academy.Instance.EnvironmentParameters;
 
 
-        Piece.OnCaptured += (p) =>
-        {
-            Debug.Log("ChessAgent Captured");
-            Kill();
-        };
+        // Piece.OnCaptured += (p) =>
+        // {
+        //     Debug.Log("ChessAgent Captured");
+        //     Kill();
+        // };
     }
 
     public override void OnEpisodeBegin()
@@ -123,7 +154,7 @@ public class ChessAgent : Agent
         Reset();
     }
 
-   
+
     public override void CollectObservations(VectorSensor sensor)
     {
         if (!_isInitialized)
@@ -139,7 +170,7 @@ public class ChessAgent : Agent
         }
 
         // add the type of piece as one hot encoded vector
-        sensor.AddObservation(GetOneHotPieceType());
+        // sensor.AddObservation(GetOneHotPieceType());
 
         // add the normalized position of the piece on the board
         sensor.AddObservation(ChessRules.SquareIdToNormalizedPosition(Piece.CurrentSquare.Id));
@@ -157,21 +188,19 @@ public class ChessAgent : Agent
 
         var moveVectors = ChessDataHelpers.GetStackedMoveVectors(moves, numTopVectors);
         sensor.AddObservation(moveVectors);
-        
-        if (_nextMoves == null)
-        {
-            _nextMoves = new List<Move>();
-        }
 
-        _nextMoves.Clear();
-        _nextMoves.AddRange(moves.GetRange(0, Mathf.Min(numTopVectors, moves.Count)));
+        // Debug.Log("Current observation size: " + sensor.ObservationSize());
+        // Debug.Log("Current observation: " + moveVectors[0]);
 
-        Debug.Log("Added " + _nextMoves.Count + " moves to _nextMoves for " + Piece.pieceType + " " + Piece.CurrentSquare.Id);
+
+        // _nextMoves.Clear();
+        // _nextMoves.AddRange(moves.GetRange(0, Mathf.Min(numTopVectors, moves.Count)));
+
+        // Debug.Log();
     }
 
     public override void OnActionReceived(ActionBuffers actionBuffers)
-    {   
-        Debug.Log("OnActionReceived for " + Piece.pieceType + " " + Piece.CurrentSquare.Id);
+    {
 
         if (!_isInitialized)
         {
@@ -180,36 +209,58 @@ public class ChessAgent : Agent
         }
 
         // model will select a move from the top numTopVector moves, which will be discreteActions[0]
-        int selectedMoveIndex = actionBuffers.DiscreteActions[0]; // discrete actions[0] branch size MUST be numTopVectors
-        int shouldMove = actionBuffers.DiscreteActions[1]; // discrete actions[1] branch size MUST be 2
+        // int selectedMoveIndex = actionBuffers.DiscreteActions[0]; // discrete actions[0] branch size MUST be numTopVectors
+        // int shouldMove = actionBuffers.DiscreteActions[1]; // discrete actions[1] branch size MUST be 2
 
-        if (_nextMoves == null) {
-            _nextMoves = Piece.GetValidMoves();
-        }
+        int x = actionBuffers.DiscreteActions[0];
+        int y = actionBuffers.DiscreteActions[1];
+        int shouldMove = actionBuffers.DiscreteActions[2];
+
 
         if (shouldMove == 0)
         {
-            if (_nextMoves.Count == 0)
+            var move = Piece.Rules.CreateMoveToPosition(x, y, Piece);
+            if (move == null)
             {
-                Debug.LogError("No moves available, punishing");
-                AddReward(-0.1f);
+                // Debug.LogError(Piece.pieceType + " " + Piece.CurrentSquare.Id + " could not create move to " + x + ", " + y);
+                _AddReward(-0.1f);
+                EventBus.Publish(new AgentActionEvent(this));
+                OnActionFailed?.Invoke(this);
                 return;
             }
 
-            if (selectedMoveIndex >= _nextMoves.Count)
+            // Debug.Log(Piece.pieceType + " " + Piece.CurrentSquare.Id + " moving to " + x + ", " + y);
+
+            Piece.MakeMove(move, moveSpeed);
+            EventBus.Publish(new AgentActionEvent(this, move));
+            OnActionSucceeded?.Invoke(this);
+
+            if (move.IsCapture)
             {
-                Debug.LogError(
-                    $"Selected move index {selectedMoveIndex} is out of range for next moves"
-                );
-                AddReward(-0.1f);
-                return;
+                _AddReward(0.5f);
             }
-            Move move = _nextMoves[selectedMoveIndex];
-            Piece.MakeMove(move);
-            EventBus.Publish(new MovePieceEvent(Piece, move));
+            else if (move.IsPromotion)
+            {
+                _AddReward(1f);
+            }
+            else
+            {
+                _AddReward(0.1f);
+
+            }
         }
-    
-        AddReward(-_existential); // punish for existence
+        else
+        {
+            EventBus.Publish(new AgentActionEvent(this));
+            OnActionFailed?.Invoke(this);
+        }
+        _AddReward(_existential); // punish for existence
+    }
+
+    public void _AddReward(float reward)
+    {
+        AddReward(reward);
+        OnRewardChanged?.Invoke(GetCumulativeReward());
     }
 
     public override void Heuristic(in ActionBuffers actionsOut)
@@ -258,5 +309,5 @@ public class ChessAgent : Agent
         SetReward(-1f);
         EndEpisode();
     }
-    
+
 }

@@ -3,7 +3,7 @@ using System.Linq;
 using UnityEngine;
 
 [System.Serializable]
-public struct Move
+public class Move
 {
     public string FromSquareId;
     public string ToSquareId;
